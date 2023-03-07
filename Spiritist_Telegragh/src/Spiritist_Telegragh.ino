@@ -1,5 +1,5 @@
 /*
- * Project Spiritist_Telegragh
+ * Project Spiritist_Telegraph
  * Description: Room controller that allows for spirit communication and allows for spirits to control lights 
  * and outlets in the room.
  * Author: Adrian Pijoan
@@ -10,36 +10,42 @@
 #include "IoTClassroom_CNM.h"
 #include "IoTTimer.h"
 #include "encoder.h"
+#include "neopixel.h"
 #include "Adafruit_BMP280.h"
 #include "Adafruit_SSD1306.h"
 #include "ouija.h"
-#include "neopixel.h"
+#include "bitmaps.h"
+
 
 const int PIXELPIN = D8;
-const int PIXELCOUNT = 46;
+const int PIXELCOUNT = 2;
 const int ENCLEDR = D4;
 const int ENCLEDG = D5;
 const int ENCSWITCH = D6;
 const int ENCPINA = A3;
 const int ENCPINB = A4;
-
+const int SWITCHPIN; //needs a pin assigned
 const int EMFPIN = A0;
-const int BMEADDRESS = 0x76;
+const int BMPADDRESS = 0x76;
 const int OLEDADDRESS = 0x3C;
 const int OLED_RESET = D4;
 
-int i;
 int encPosition;
 int ouijaChar;
 int previousOuijaChar;
+int currentTemp;
+int previousTemp;
+int emfLevel;
 bool ouijaToggle;
+bool tempToggle;
+bool switchState;
 
 IoTTimer ouijaTimer;
 IoTTimer tempTimer;
 Encoder spiritEncoder(ENCPINB, ENCPINA);
-Adafruit_NeoPixel pixel(PIXELCOUNT, PIXELPIN, WS2812B);
+Adafruit_NeoPixel candlePixel(PIXELCOUNT, PIXELPIN, WS2812B);
 Adafruit_BMP280 spiritBmp;
-Adafruit_SSD1306 display(OLED_RESET);
+Adafruit_SSD1306 spiritDisplay(OLED_RESET);
 
 
 SYSTEM_MODE(SEMI_AUTOMATIC);
@@ -51,16 +57,73 @@ void setup() {
   // WiFi.setCredentials("IoTNetwork");
   // WiFi.connect();
 
+  Wire.begin();
+  spiritDisplay.begin(SSD1306_SWITCHCAPVCC, OLEDADDRESS);
+  spiritDisplay.setRotation(0);
+  spiritDisplay.clearDisplay();
+  spiritDisplay.display();
+
+  spiritBmp.begin(BMPADDRESS);
+
+  candlePixel.begin();
+  candlePixel.show();
+
   pinMode(ENCSWITCH, INPUT_PULLUP);
   pinMode(ENCLEDG, OUTPUT);
   pinMode(ENCLEDR, OUTPUT);
-
-  digitalWrite(ENCLEDG, HIGH);
-  digitalWrite(ENCLEDR, LOW);
+  pinMode(SWITCHPIN, INPUT);
+  pinMode(EMFPIN, INPUT);
 
 }
 
 void loop() {
+
+  switchState = digitalRead(SWITCHPIN);
+  //run ouija no matter what
+  if(switchState = false){
+    digitalWrite(ENCLEDG, LOW);
+    digitalWrite(ENCLEDR, HIGH);
+    currentTemp = (1.8 * spiritBmp.readTemperature())+32;
+    spiritDisplay.setTextSize(1);
+    spiritDisplay.setTextColor(WHITE);
+    spiritDisplay.setCursor(5,54);
+    spiritDisplay.printf("T: (%i%c)", currentTemp, 0xF8);
+    spiritDisplay.display();
+    ouija();
+  }
+
+  spiritDisplay.clearDisplay();
+
+  //if ghost switch is flipped, also read Temp and EMF
+  if(switchState){
+    digitalWrite(ENCLEDG, HIGH);
+    digitalWrite(ENCLEDR, LOW);
+    ouija();
+    tempDrop();
+    emf();
+  }
+
+
+
+
+  // if(ouijaChar != previousOuijaChar){ //check to see if planchette has moved to a new position
+  //   ouijaTimer.startTimer(500); //wait 0.5 seconds
+  //   ouijaToggle = true;
+  // }
+
+  // previousOuijaChar = ouijaChar;
+
+  // if((previousOuijaChar == ouijaChar) && ouijaToggle && ouijaTimer.isTimerReady()){  //if it sees a new position and it has held that position for more than 3/4 a second, do something
+  //   Serial.printf("%s\n", ouijaBoard[ouijaChar]);
+  //   ouijaToggle = false;
+  // }
+ 
+
+}
+
+//my functions
+
+void ouija(){
 
   encPosition = spiritEncoder.read();
 
@@ -83,10 +146,49 @@ void loop() {
 
   previousOuijaChar = ouijaChar;
 
-  if((previousOuijaChar == ouijaChar) && ouijaToggle && ouijaTimer.isTimerReady()){  //if it sees a new position and it has held that position for more than 3/4 a second, do something
-    Serial.printf("%s\n", ouijaBoard[ouijaChar]);
+  if((previousOuijaChar == ouijaChar) && ouijaToggle && ouijaTimer.isTimerReady()){  //if it sees a new position and it has held that position for more than 0.5 seconds, do something
+    Serial.printf("%s\n", ouijaBoard[ouijaChar]); //change this to print on OLED rather than serial monitor
+    //send ouijaChar into a function that does things with the wemo and hue...
     ouijaToggle = false;
   }
- 
+}
+
+void tempDrop(){
+  //if the temp drops by at least 5 degrees F within a matter of 5 seconds, do something (probably dim the lights)
+  currentTemp = (1.8 * spiritBmp.readTemperature())+32;//Read the BMP
+
+  if(currentTemp != previousTemp && tempToggle == false){
+    tempTimer.startTimer(10000);
+    previousTemp = currentTemp;
+    tempToggle = true;
+  } //need to make sure tempToggle actually does what I think it does and the timer doesn't endlessly reset.
+
+  if(currentTemp <= (previousTemp - 5) && tempToggle && tempTimer.isTimerReady()){
+    //do something with the lights...probably change color and dim?
+    tempToggle = false;
+  }
+
+  if(tempToggle && tempTimer.isTimerReady()){
+    tempToggle = false;
+  }
+
+}
+
+void emf(){
+  //if EMF reading exceeds a certain threshold, flash the lights on and off
+  emfLevel = analogRead(EMFPIN);
+
+  if(emfLevel > 2000){ //currently an arbitrary number, need to test for actual range
+    //flicker the lights for a set amount of time
+    candlePixel.setBrightness(32);
+    //dim hue lights
+  }
+
+  else{
+    candlePixel.setBrightness(0);
+    candlePixel.show();
+    //brighten hue lights
+
+  }
 
 }
