@@ -53,25 +53,26 @@ int emfLevel;
 int candleFlickerState = 0;
 bool ouijaToggle;
 bool tempToggle;
-bool switchState = false;
+bool emfToggle;
 
 IoTTimer ouijaTimer;
 IoTTimer tempTimer;
 IoTTimer candleFlickerTimer;
+IoTTimer emfTimer;
 Encoder spiritEncoder(ENCPINB, ENCPINA);
 Adafruit_NeoPixel candlePixel(PIXELCOUNT, PIXELPIN, WS2812B);
 Adafruit_BMP280 spiritBmp;
 Adafruit_SSD1306 spiritDisplay(OLED_RESET);
 
 
-SYSTEM_MODE(SEMI_AUTOMATIC);
-// SYSTEM_MODE(MANUAL);
+// SYSTEM_MODE(SEMI_AUTOMATIC);
+SYSTEM_MODE(MANUAL);
 
 void setup() {
   Serial.begin(9600);
-  // WiFi.on();
-  // WiFi.setCredentials("IoTNetwork");
-  // WiFi.connect();
+  WiFi.on();
+  WiFi.setCredentials("IoTNetwork");
+  WiFi.connect();
 
   spiritDisplay.begin(SSD1306_SWITCHCAPVCC, OLEDADDRESS);
   spiritDisplay.setRotation(0);
@@ -86,16 +87,14 @@ void setup() {
   pinMode(ENCSWITCH, INPUT_PULLUP);
   pinMode(ENCLEDG, OUTPUT);
   pinMode(ENCLEDR, OUTPUT);
-  pinMode(SWITCHPIN, INPUT);
+  pinMode(SWITCHPIN, INPUT_PULLUP);
   pinMode(EMFPIN, INPUT);
 
 }
 
 void loop() {
 
-  // switchState = digitalRead(SWITCHPIN);
-
-  if(switchState == false){
+  if(digitalRead(SWITCHPIN) == LOW){
     digitalWrite(ENCLEDG, 255);
     digitalWrite(ENCLEDR, 0);
 
@@ -111,22 +110,21 @@ void loop() {
     candleFlicker();
   }
 
-  //if ghost switch is flipped, also run tempDrop and check for EMF
-  if(switchState){
+  if(digitalRead(SWITCHPIN) == HIGH){
     digitalWrite(ENCLEDG, 255);
     digitalWrite(ENCLEDR, 126);
+
     tempDrop();
     ouija();
     emf();
   }
 
 }
- 
-
 
 //my functions
 
 void candleFlicker(){
+
     candlePixel.setPixelColor(0, 0xFFA500);
     candlePixel.setPixelColor(1, 0xFFA500);
 
@@ -193,15 +191,59 @@ void ouija(){
     spiritDisplay.setCursor(32,20);
     spiritDisplay.printf("%s", ouijaBoard[ouijaChar]);
     spiritDisplay.display();
+
     ouijaIot();
-    //send ouijaChar into a function that does things with the wemo and hue...
     ouijaToggle = false;
   }
 }
 
 void ouijaIot(){
+  int i;
+
+  if(ouijaChar == 0){ //HELLO
+    for(i=1; i<7; i++){
+      setHue(i, true, HueOrange, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 11){ //YES for Outlets ON
+    for(i=0; i<5; i++){
+      switchON(i);
+    }
+  }
+
+  if(ouijaChar == 13){ //B for BLUE
+    for(i=1; i<7; i++){
+      setHue(i, true, HueBlue, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 29){ //R for RED
+    for(i=1; i<7; i++){
+      setHue(i, true, HueRed, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 31){ //NO for Outlets OFF
+    for(i=0; i<5; i++){
+      switchOFF(i);
+    }
+  }
+
+  if(ouijaChar == 34){ //V for VIOLET
+    for(i=1; i<7; i++){
+      setHue(i, true, HueViolet, 250, 250);
+    }
+  }
+
+  if (ouijaChar == 39){ //GOOD BYE
+    for(i=1; i<7; i++){
+      setHue(i, false, 0, 0, 0);
+    }
+  }
 
 }
+
 
 void tempDrop(){
   //if the temp drops by at least 5 degrees F within a matter of 5 seconds, do something (probably dim the lights)
@@ -217,11 +259,11 @@ void tempDrop(){
     tempTimer.startTimer(10000);
     previousTemp = currentTemp;
     tempToggle = true;
-  } //need to make sure tempToggle actually does what I think it does and the timer doesn't endlessly reset.
+  }
 
   if(currentTemp <= (previousTemp - 5) && tempToggle && tempTimer.isTimerReady()){
     Serial.printf("TEMP DROP DETECTED\n");
-    //do something with the lights...probably change color and dim?
+    //turn lights blue and dim
     //start timer and reset lights after temp normalizes
     tempToggle = false;
   }
@@ -235,21 +277,19 @@ void tempDrop(){
 void emf(){
   //if EMF reading exceeds a certain threshold, turn on neopixel candles and flash the lights on and off
   emfLevel = analogRead(EMFPIN);
-  Serial.printf("%i\n", emfLevel);
+  // Serial.printf("%i\n", emfLevel);
 
   if(emfLevel > 2200){
-    //flicker the lights for a set amount of time
-    candlePixel.setPixelColor(0, 0xFFA500);
-    candlePixel.setPixelColor(1, 0xFFA500);
-    candlePixel.setBrightness(32);
-    candlePixel.show();
-    //dim hue lights
+    emfTimer.startTimer(2000);
+
+    candleFlicker(); //need to give this a timer
+    //flicker lights and outlets
   }
 
   else{
     candlePixel.setBrightness(0);
     candlePixel.show();
-    //brighten hue lights
+    //brighten hue lights back up
 
   }
 

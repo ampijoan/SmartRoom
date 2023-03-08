@@ -30,6 +30,8 @@ const int BMPADDRESS = 0x76;
 const int OLEDADDRESS = 0x3C;
 const int OLED_RESET = D4;
 
+int i;
+int j;
 int encPosition;
 int ouijaChar;
 int previousOuijaChar;
@@ -39,25 +41,26 @@ int emfLevel;
 int candleFlickerState = 0;
 bool ouijaToggle;
 bool tempToggle;
-bool switchState = false;
+bool emfToggle;
+bool emfFlashToggle;
 
 IoTTimer ouijaTimer;
 IoTTimer tempTimer;
 IoTTimer candleFlickerTimer;
+IoTTimer emfTimer;
+IoTTimer emfFlashTimer;
 Encoder spiritEncoder(ENCPINB, ENCPINA);
 Adafruit_NeoPixel candlePixel(PIXELCOUNT, PIXELPIN, WS2812B);
 Adafruit_BMP280 spiritBmp;
 Adafruit_SSD1306 spiritDisplay(OLED_RESET);
 
-
-SYSTEM_MODE(SEMI_AUTOMATIC);
-// SYSTEM_MODE(MANUAL);
+SYSTEM_MODE(MANUAL);
 
 void setup() {
-  Serial.begin(9600);
-  // WiFi.on();
-  // WiFi.setCredentials("IoTNetwork");
-  // WiFi.connect();
+  // Serial.begin(9600);
+  WiFi.on();
+  WiFi.setCredentials("IoTNetwork");
+  WiFi.connect();
 
   spiritDisplay.begin(SSD1306_SWITCHCAPVCC, OLEDADDRESS);
   spiritDisplay.setRotation(0);
@@ -72,16 +75,14 @@ void setup() {
   pinMode(ENCSWITCH, INPUT_PULLUP);
   pinMode(ENCLEDG, OUTPUT);
   pinMode(ENCLEDR, OUTPUT);
-  pinMode(SWITCHPIN, INPUT);
+  pinMode(SWITCHPIN, INPUT_PULLUP);
   pinMode(EMFPIN, INPUT);
 
 }
 
 void loop() {
 
-  // switchState = digitalRead(SWITCHPIN);
-
-  if(switchState == false){
+  if(digitalRead(SWITCHPIN) == LOW){
     digitalWrite(ENCLEDG, 255);
     digitalWrite(ENCLEDR, 0);
 
@@ -97,18 +98,16 @@ void loop() {
     candleFlicker();
   }
 
-  if(switchState){
+  if(digitalRead(SWITCHPIN) == HIGH){
     digitalWrite(ENCLEDG, 255);
     digitalWrite(ENCLEDR, 126);
-    
+
     tempDrop();
     ouija();
     emf();
   }
 
 }
- 
-
 
 //my functions
 
@@ -180,15 +179,64 @@ void ouija(){
     spiritDisplay.setCursor(32,20);
     spiritDisplay.printf("%s", ouijaBoard[ouijaChar]);
     spiritDisplay.display();
+
     ouijaIot();
-    //send ouijaChar into a function that does things with the wemo and hue...
     ouijaToggle = false;
   }
 }
 
 void ouijaIot(){
 
+  if(ouijaChar == 0){ //HELLO
+    for(i=1; i<7; i++){
+      setHue(i, true, HueOrange, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 11){ //YES for Outlets ON
+    for(i=0; i<5; i++){
+      switchON(i);
+    }
+  }
+
+  if(ouijaChar == 13){ //B for BLUE
+    for(i=1; i<7; i++){
+      setHue(i, true, HueBlue, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 18){ //G for GREEN
+    for(i=1; i<7; i++){
+      setHue(i, true, HueGreen, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 29){ //R for RED
+    for(i=1; i<7; i++){
+      setHue(i, true, HueRed, 250, 250);
+    }
+  }
+
+  if(ouijaChar == 31){ //NO for Outlets OFF
+    for(i=0; i<5; i++){
+      switchOFF(i);
+    }
+  }
+
+  if(ouijaChar == 34){ //V for VIOLET
+    for(i=1; i<7; i++){
+      setHue(i, true, HueViolet, 250, 250);
+    }
+  }
+
+  if (ouijaChar == 39){ //GOOD BYE
+    for(i=1; i<7; i++){
+      setHue(i, false, 0, 0, 0);
+    }
+  }
+
 }
+
 
 void tempDrop(){
   //if the temp drops by at least 5 degrees F within a matter of 5 seconds, do something (probably dim the lights)
@@ -207,9 +255,13 @@ void tempDrop(){
   }
 
   if(currentTemp <= (previousTemp - 5) && tempToggle && tempTimer.isTimerReady()){
-    Serial.printf("TEMP DROP DETECTED\n");
-    //do something with the lights...probably change color and dim?
-    //start timer and reset lights after temp normalizes
+    //once cold spot is detected, turn lights blue and gradually dim them
+    Serial.printf("TEMP DROP DETECTED\n"); //replace this with an OLED print
+    for(i=250;i>50;i=i-5){
+      for(j=1; j<7;j++){
+      setHue(j, true, HueBlue, i, 250);
+      }
+    }
     tempToggle = false;
   }
 
@@ -224,20 +276,47 @@ void emf(){
   emfLevel = analogRead(EMFPIN);
   // Serial.printf("%i\n", emfLevel);
 
-  if(emfLevel > 2200){
-    candleFlicked(); //need to give this a timer
-    candlePixel.setPixelColor(0, 0xFFA500);
-    candlePixel.setPixelColor(1, 0xFFA500);
-    candlePixel.setBrightness(32);
-    candlePixel.show();
-    //dim hue lights
+  if(emfLevel > 2200 && emfToggle == false){
+    emfTimer.startTimer(4000);
+    emfFlashToggle = true;
+    emfToggle = true;
   }
 
-  else{
+  if(emfToggle){
+    candleFlicker();
+    emfFlash();
+  }
+
+  if(emfToggle && emfTimer.isTimerReady()){
     candlePixel.setBrightness(0);
     candlePixel.show();
-    //brighten hue lights
-
+    switchOFF(i);
+    setHue(i, false, 0, 0, 0);
+    emfToggle = false;
   }
 
 }
+
+void emfFlash(){ //flash Hue lights and Wemos on and off once every half second
+  if(emfFlashToggle){
+    emfFlashTimer.startTimer(500);
+    emfFlashToggle = false;
+  }
+
+  if(hueTimer.isTimerReady()){
+    for(i=0; i<5; i++){
+      switchOFF(i);
+      setHue(i+1, false, 0, 0, 0);
+    }
+    emfFlashToggle = true;
+  }
+
+  else(){
+    for(i=0; i<5; i++){
+      switchON(i);
+      setHue(i+1, true, HueOrange, 250, 250);
+    }
+  }
+
+}
+
