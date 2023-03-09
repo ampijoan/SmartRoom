@@ -25,7 +25,6 @@
 
 void setup();
 void loop();
-void emfFlash(bool _emfFlashToggle);
 #line 20 "/Users/adrianpijoan/Documents/IoT/SmartRoom/Spiritist_Telegragh/src/Spiritist_Telegragh.ino"
 const int PIXELPIN = D2;
 const int PIXELCOUNT = 2;
@@ -58,7 +57,7 @@ void ouija();
 void ouijaIot(int _ouijaChar);
 void tempDrop();
 void emf();
-void emfFlash(bool _enfFlashToggle);
+void emfFlash();
 
 SYSTEM_MODE(MANUAL);
 
@@ -123,8 +122,8 @@ void candleFlicker(){
 
   static int candleFlickerState = 0;
 
-    candlePixel.setPixelColor(0, 0xFFA500);
-    candlePixel.setPixelColor(1, 0xFFA500);
+  candlePixel.setPixelColor(0, 0xFFA500);
+  candlePixel.setPixelColor(1, 0xFFA500);
 
 
   if(candleFlickerState == 0){
@@ -155,8 +154,9 @@ void candleFlicker(){
     candleFlickerState = 4;
   }
 
-  if(candleFlickerState == 4 && candleFlickerTimer.isTimerReady())
+  if(candleFlickerState == 4 && candleFlickerTimer.isTimerReady()){
     candleFlickerState = 0;
+  }
 }
 
 //this function converts the encoder position into a character from the Ouija Array
@@ -263,7 +263,7 @@ void tempDrop(){
   int j;
   int k;
   static bool tempToggle;
-  //if the temp drops by at least 5 degrees F within a matter of 5 seconds, do something (probably dim the lights)
+  //if the temp drops by at least 5 degrees F within a matter of 10 seconds, do something
   currentTemp = (1.8 * spiritBmp.readTemperature())+32;//Read the BMP
   spiritDisplay.setTextSize(1);
   spiritDisplay.setTextColor(WHITE);
@@ -299,7 +299,6 @@ void tempDrop(){
 void emf(){
 
   int l;
-  static bool emfFlashToggle;
   static bool emfToggle;
   //if EMF reading exceeds a certain threshold, turn on neopixel candles and flash the lights on and off
   int emfLevel = analogRead(EMFPIN);
@@ -307,13 +306,12 @@ void emf(){
 
   if(emfLevel > 4000 && emfToggle == false){
     emfTimer.startTimer(4000);
-    emfFlashToggle = true;
     emfToggle = true;
   }
 
   if(emfToggle){
     candleFlicker();
-    emfFlash(emfToggle);
+    emfFlash();
   }
 
   if(emfToggle && emfTimer.isTimerReady()){
@@ -329,13 +327,14 @@ void emf(){
 }
 
 //This function changes states of Hue Lights and Wemo Outlets in the IoT Classroom based on readings from the EMF meter
-void emfFlash(bool _emfFlashToggle){ //flash Hue lights and Wemos on and off once every half second
+void emfFlash(){ //flash Hue lights and Wemos on and off once every half second
 
   int m;
+  static bool emfFlashToggle = true;
 
-  if(_emfFlashToggle){
+  if(emfFlashToggle){
     emfFlashTimer.startTimer(500);
-    _emfFlashToggle = false;
+    emfFlashToggle = false;
   }
 
   if(emfFlashTimer.isTimerReady()){
@@ -343,7 +342,7 @@ void emfFlash(bool _emfFlashToggle){ //flash Hue lights and Wemos on and off onc
       switchOFF(m);
       setHue(m+1, false, 0, 0, 0);
     }
-    _emfFlashToggle = true;
+    emfFlashToggle = true;
   }
 
   else{
