@@ -3,6 +3,7 @@
 
 class Button {
   int _buttonPin;
+  int _prevButtonState;
 
   public:
     Button(int buttonPin) {
@@ -15,7 +16,6 @@ class Button {
     }
 
     bool isClicked() {
-      static bool _prevButtonState;
       bool _buttonState, _clicked;
 
       _buttonState = digitalRead(_buttonPin);
