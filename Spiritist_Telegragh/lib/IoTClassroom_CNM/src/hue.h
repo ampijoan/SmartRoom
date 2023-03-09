@@ -83,8 +83,8 @@ bool setHue(int lightNum, bool HueOn, int HueColor, int HueBright, int HueSat) {
   if (HueClient.connect(hueHubIP, hueHubPort)) {
     //while (HueClient.connected())
     //{
-      Serial.println("Sending Command to Hue");
-      Serial.println(command);
+      // Serial.println("Sending Command to Hue");
+      // Serial.println(command);
       HueClient.print("PUT /api/");
       HueClient.print(hueUsername);
       HueClient.print("/lights/");
@@ -99,8 +99,8 @@ bool setHue(int lightNum, bool HueOn, int HueColor, int HueBright, int HueSat) {
       HueClient.println("Content-Type: text/plain;charset=UTF-8");
       HueClient.println();  // blank line before body
       HueClient.println(command);  // Hue command
-      Serial.println("From Hue");
-      Serial.println(HueClient.readString()); // To close connection
+      // Serial.println("From Hue");
+      // Serial.println(HueClient.readString()); // To close connection
     HueClient.stop();
     return true;  // command executed
   }
@@ -125,21 +125,21 @@ bool getHue(int lightNum) {
     //while (HueClient.connected())
     //{
     //  if (HueClient.available()) {
-        Serial.println();
-        Serial.println(HueClient.readString());
-        Serial.println();
+        // Serial.println();
+        // Serial.println(HueClient.readString());
+        // Serial.println();
         HueClient.findUntil("\"on\":", "\0");
         hueOn = (HueClient.readStringUntil(',') == "true");  // if light is on, set variable to true
-        Serial.print("Hue Status: ");
-        Serial.println(hueOn);
+        // Serial.print("Hue Status: ");
+        // Serial.println(hueOn);
  
         HueClient.findUntil("\"bri\":", "\0");
         hueBri = HueClient.readStringUntil(',').toInt();  // set variable to brightness value
-        Serial.println(hueBri);
+        // Serial.println(hueBri);
         
         HueClient.findUntil("\"hue\":", "\0");
         hueHue = HueClient.readStringUntil(',').toInt();  // set variable to hue value
-        Serial.printf("Hue is\n\n\n %i\n",hueHue);
+        // Serial.printf("Hue is\n\n\n %i\n",hueHue);
         
         //break;  // not capturing other light attributes yet
     //  }

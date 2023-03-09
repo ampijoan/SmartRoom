@@ -30,19 +30,8 @@ const int BMPADDRESS = 0x76;
 const int OLEDADDRESS = 0x3C;
 const int OLED_RESET = D4;
 
-int i;
-int j;
-int encPosition;
-int ouijaChar;
-int previousOuijaChar;
 int currentTemp;
 int previousTemp;
-int emfLevel;
-int candleFlickerState = 0;
-bool ouijaToggle;
-bool tempToggle;
-bool emfToggle;
-bool emfFlashToggle;
 
 IoTTimer ouijaTimer;
 IoTTimer tempTimer;
@@ -54,10 +43,17 @@ Adafruit_NeoPixel candlePixel(PIXELCOUNT, PIXELPIN, WS2812B);
 Adafruit_BMP280 spiritBmp;
 Adafruit_SSD1306 spiritDisplay(OLED_RESET);
 
+void candleFlicker();
+void ouija();
+void ouijaIot(int _ouijaChar);
+void tempDrop();
+void emf();
+void emfFlash(bool _enfFlashToggle);
+
 SYSTEM_MODE(MANUAL);
 
 void setup() {
-  // Serial.begin(9600);
+  Serial.begin(9600);
   WiFi.on();
   WiFi.setCredentials("IoTNetwork");
   WiFi.connect();
@@ -82,8 +78,17 @@ void setup() {
 
 void loop() {
 
-  if(digitalRead(SWITCHPIN) == LOW){
-    digitalWrite(ENCLEDG, 255);
+  digitalWrite(ENCLEDG, 255);
+
+  if(digitalRead(SWITCHPIN)){
+    digitalWrite(ENCLEDR, 126);
+
+    tempDrop();
+    ouija();
+    emf();
+  }
+
+  else{
     digitalWrite(ENCLEDR, 0);
 
     currentTemp = (1.8 * spiritBmp.readTemperature())+32;
@@ -98,23 +103,19 @@ void loop() {
     candleFlicker();
   }
 
-  if(digitalRead(SWITCHPIN) == HIGH){
-    digitalWrite(ENCLEDG, 255);
-    digitalWrite(ENCLEDR, 126);
 
-    tempDrop();
-    ouija();
-    emf();
-  }
 
 }
 
-//my functions
 
+//this function flickers a neopixel inside of a 3D printed candle
 void candleFlicker(){
+
+  static int candleFlickerState = 0;
 
     candlePixel.setPixelColor(0, 0xFFA500);
     candlePixel.setPixelColor(1, 0xFFA500);
+
 
   if(candleFlickerState == 0){
     candleFlickerTimer.startTimer(100);
@@ -148,7 +149,13 @@ void candleFlicker(){
     candleFlickerState = 0;
 }
 
+//this function converts the encoder position into a character from the Ouija Array
 void ouija(){
+
+  int encPosition;
+  int ouijaChar;
+  static int previousOuijaChar;
+  static bool ouijaToggle;
 
   encPosition = spiritEncoder.read();
 
@@ -171,7 +178,7 @@ void ouija(){
 
   previousOuijaChar = ouijaChar;
 
-  if((previousOuijaChar == ouijaChar) && ouijaToggle && ouijaTimer.isTimerReady()){  //if it sees a new position and it has held that position for more than 0.5 seconds, do something
+  if(ouijaToggle && ouijaTimer.isTimerReady()){  //if it sees a new position and it has held that position for more than 0.5 seconds, do something
     Serial.printf("%s\n", ouijaBoard[ouijaChar]);
     spiritDisplay.clearDisplay();
     spiritDisplay.setTextSize(2);
@@ -180,56 +187,59 @@ void ouija(){
     spiritDisplay.printf("%s", ouijaBoard[ouijaChar]);
     spiritDisplay.display();
 
-    ouijaIot();
+    ouijaIot(ouijaChar);
     ouijaToggle = false;
   }
 }
 
-void ouijaIot(){
+//this function uses the Ouija Board reading to alter the states of hue lights and wemo outlets in the IoT Classroom
+void ouijaIot(int _ouijaChar){
 
-  if(ouijaChar == 0){ //HELLO
+  int i;
+
+  if(_ouijaChar == 0){ //HELLO
     for(i=1; i<7; i++){
       setHue(i, true, HueOrange, 250, 250);
     }
   }
 
-  if(ouijaChar == 11){ //YES for Outlets ON
+  if(_ouijaChar == 11){ //YES for Outlets ON
     for(i=0; i<5; i++){
       switchON(i);
     }
   }
 
-  if(ouijaChar == 13){ //B for BLUE
+  if(_ouijaChar == 13){ //B for BLUE
     for(i=1; i<7; i++){
       setHue(i, true, HueBlue, 250, 250);
     }
   }
 
-  if(ouijaChar == 18){ //G for GREEN
+  if(_ouijaChar == 18){ //G for GREEN
     for(i=1; i<7; i++){
       setHue(i, true, HueGreen, 250, 250);
     }
   }
 
-  if(ouijaChar == 29){ //R for RED
+  if(_ouijaChar == 29){ //R for RED
     for(i=1; i<7; i++){
       setHue(i, true, HueRed, 250, 250);
     }
   }
 
-  if(ouijaChar == 31){ //NO for Outlets OFF
+  if(_ouijaChar == 31){ //NO for Outlets OFF
     for(i=0; i<5; i++){
       switchOFF(i);
     }
   }
 
-  if(ouijaChar == 34){ //V for VIOLET
+  if(_ouijaChar == 34){ //V for VIOLET
     for(i=1; i<7; i++){
       setHue(i, true, HueViolet, 250, 250);
     }
   }
 
-  if (ouijaChar == 39){ //GOOD BYE
+  if (_ouijaChar == 39){ //GOOD BYE
     for(i=1; i<7; i++){
       setHue(i, false, 0, 0, 0);
     }
@@ -237,8 +247,12 @@ void ouijaIot(){
 
 }
 
-
+//This function looks for a temperature drop
 void tempDrop(){
+
+  int j;
+  int k;
+  static bool tempToggle;
   //if the temp drops by at least 5 degrees F within a matter of 5 seconds, do something (probably dim the lights)
   currentTemp = (1.8 * spiritBmp.readTemperature())+32;//Read the BMP
   spiritDisplay.setTextSize(1);
@@ -257,9 +271,9 @@ void tempDrop(){
   if(currentTemp <= (previousTemp - 5) && tempToggle && tempTimer.isTimerReady()){
     //once cold spot is detected, turn lights blue and gradually dim them
     Serial.printf("TEMP DROP DETECTED\n"); //replace this with an OLED print
-    for(i=250;i>50;i=i-5){
-      for(j=1; j<7;j++){
-      setHue(j, true, HueBlue, i, 250);
+    for(j=250;j>50;j=j-5){
+      for(k=1; k<7;k++){
+      setHue(k, true, HueBlue, j, 250);
       }
     }
     tempToggle = false;
@@ -271,12 +285,17 @@ void tempDrop(){
 
 }
 
+//This function reads the EMF meter
 void emf(){
-  //if EMF reading exceeds a certain threshold, turn on neopixel candles and flash the lights on and off
-  emfLevel = analogRead(EMFPIN);
-  // Serial.printf("%i\n", emfLevel);
 
-  if(emfLevel > 2200 && emfToggle == false){
+  int l;
+  static bool emfFlashToggle;
+  static bool emfToggle;
+  //if EMF reading exceeds a certain threshold, turn on neopixel candles and flash the lights on and off
+  int emfLevel = analogRead(EMFPIN);
+  Serial.printf("%i\n", emfLevel);
+
+  if(emfLevel > 4000 && emfToggle == false){
     emfTimer.startTimer(4000);
     emfFlashToggle = true;
     emfToggle = true;
@@ -284,37 +303,43 @@ void emf(){
 
   if(emfToggle){
     candleFlicker();
-    emfFlash();
+    emfFlash(emfToggle);
   }
 
   if(emfToggle && emfTimer.isTimerReady()){
     candlePixel.setBrightness(0);
     candlePixel.show();
-    switchOFF(i);
-    setHue(i, false, 0, 0, 0);
-    emfToggle = false;
+    for(l=0;l<6;l++){
+      switchOFF(l);
+      setHue(l+1, false, 0, 0, 0);
+      emfToggle = false;
+    }
   }
 
 }
 
-void emfFlash(){ //flash Hue lights and Wemos on and off once every half second
-  if(emfFlashToggle){
+//This function changes states of Hue Lights and Wemo Outlets in the IoT Classroom based on readings from the EMF meter
+void emfFlash(bool _emfFlashToggle){ //flash Hue lights and Wemos on and off once every half second
+
+  int m;
+
+  if(_emfFlashToggle){
     emfFlashTimer.startTimer(500);
-    emfFlashToggle = false;
+    _emfFlashToggle = false;
   }
 
-  if(hueTimer.isTimerReady()){
-    for(i=0; i<5; i++){
-      switchOFF(i);
-      setHue(i+1, false, 0, 0, 0);
+  if(emfFlashTimer.isTimerReady()){
+    for(m=0; m<6; m++){
+      switchOFF(m);
+      setHue(m+1, false, 0, 0, 0);
     }
-    emfFlashToggle = true;
+    _emfFlashToggle = true;
   }
 
-  else(){
-    for(i=0; i<5; i++){
-      switchON(i);
-      setHue(i+1, true, HueOrange, 250, 250);
+  else{
+    for(m=0; m<6; m++){
+      switchON(m);
+      setHue(m+1, true, HueOrange, 250, 250);
     }
   }
 
