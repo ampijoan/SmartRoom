@@ -1,5 +1,0 @@
-#include "Particle.h"
-#include "hue.h"
-#include "wemo.h"
-#include "IoTTimer.h"
-#include "Button.h"
